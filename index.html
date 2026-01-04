@@ -181,7 +181,7 @@ async function loadArticle(index) {
     let html = data.content;
 
     if (document.getElementById("toggleTranslate").checked) {
-      html = await translateArticleContent(html, "nl");
+      html = await translateArticleContent(html, "pt-BR");
     }
 
     container.innerHTML = `

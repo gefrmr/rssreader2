@@ -19,6 +19,7 @@
   .article h2 { font-size: 18px; margin-top: 0; line-height: 1.2; }
   .translation-original { margin-bottom: 2px; }
   .translation-line { color: #555; margin: 0 0 8px 10px; font-style: italic; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   @keyframes fadeIn { to { opacity: 1; } }
 </style>
 </head>
@@ -28,6 +29,11 @@
   <div class="nav-bar">
     <div><strong>Reader</strong><span id="syncStatus"></span></div>
     <a href="woorden.html">Instellingen ⚙️</a>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="toggleTranslate">
+    <label for="toggleTranslate">Vertaling inschakelen</label>
   </div>
 
   <select id="feedSelect" onchange="loadSelectedFeed()"></select>
@@ -42,25 +48,10 @@ let currentIndex = 0;
 /* ========= Vertaal / Gemini helpers ========= */
 
 async function translateSentence(sentence, targetLang = "nl") {
-  const apiKey = localStorage.getItem("geminiKey");
-  if (!apiKey) return null; // geen key -> geen vertaling
-
   try {
-    const resp = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: `Vertaal deze zin naar ${targetLang}. Geef alleen de vertaling terug, zonder uitleg:\n\n"${sentence}"` }]
-          }]
-        })
-      }
-    );
+    const resp = await fetch(`/api/translate?sentence=${encodeURIComponent(sentence)}&target=${targetLang}`);
     const data = await resp.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return text.trim() || null;
+    return data.translation || null;
   } catch (e) {
     console.error("Vertaalfout:", e);
     return null;
@@ -75,14 +66,6 @@ function splitIntoSentences(text) {
 }
 
 async function translateArticleContent(html, targetLang = "nl") {
-  const apiKey = localStorage.getItem("geminiKey");
-
-  // Als geen API key aanwezig is → geef gewoon originele HTML terug (zonder zin-per-zin vertaling)
-  if (!apiKey) {
-    return html;
-  }
-
-  // HTML → plain text
   const temp = document.createElement("div");
   temp.innerHTML = html;
   const text = temp.innerText;
@@ -93,10 +76,7 @@ async function translateArticleContent(html, targetLang = "nl") {
   for (const s of sentences) {
     const translated = await translateSentence(s, targetLang);
 
-    // originele zin
     output += `<p class="translation-original">${s}</p>`;
-
-    // vertaling (indien gelukt)
     if (translated) {
       output += `<p class="translation-line">${translated}</p>`;
     }
@@ -198,14 +178,17 @@ async function loadArticle(index) {
     const data = await resp.json();
     const words = JSON.parse(localStorage.getItem("highlightWords") || "[]");
 
-    // inhoud + vertaling
-    const translatedHtml = await translateArticleContent(data.content, "nl");
+    let html = data.content;
+
+    if (document.getElementById("toggleTranslate").checked) {
+      html = await translateArticleContent(html, "nl");
+    }
 
     container.innerHTML = `
       <h2>${applyHighlights(data.title, words)}</h2>
-      ${applyHighlights(translatedHtml, words)}
+      ${applyHighlights(html, words)}
     `;
-    // fade-in effect
+
     requestAnimationFrame(() => {
       container.style.opacity = 1;
     });

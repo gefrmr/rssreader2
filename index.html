@@ -23,7 +23,8 @@
               padding: 10px 0; -webkit-overflow-scrolling: touch; }
   .slide { min-width: 75%; background: white; padding: 6px; border-radius: 10px;
            scroll-snap-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-           height: 120px; display: flex; align-items: center; justify-content: center; }
+           height: 120px; display: flex; align-items: center; justify-content: center;
+           cursor: pointer; }
   .slide img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
   .article { background: white; padding: 20px; margin-top: 12px; border-radius: 12px;
@@ -436,14 +437,23 @@ async function loadFeed(url) {
     );
     const data = await resp.json();
     items = data.items || [];
+    
     carousel.innerHTML = items
-      .map(item => `<div class="slide"><img src="${
+      .map((item, idx) => `<div class="slide" data-index="${idx}"><img src="${
         item.thumbnail ||
         (item.enclosure && item.enclosure.link) ||
         "https://via.placeholder.com/150"
       }"></div>`)
       .join("");
-    loadArticle(0);
+    
+    // Wacht even zodat de slides geladen zijn voordat we scroll event listener activeren
+    setTimeout(() => {
+      // Alleen eerste artikel laden als er nog niet gescrolled is
+      if (carousel.scrollLeft === 0) {
+        loadArticle(0);
+      }
+    }, 100);
+    
   } catch {
     carousel.innerHTML = "Fout bij laden.";
   }
@@ -497,15 +507,34 @@ async function loadArticle(index) {
 
 /* ========= SWIPE ========= */
 
+let carouselScrollTimeout;
+
 document.getElementById("carousel").onscroll = () => {
-  const slide = document.querySelector(".slide");
-  if (!slide) return;
-  const slideWidth = slide.offsetWidth + 10;
-  const index = Math.round(document.getElementById("carousel").scrollLeft / slideWidth);
-  if (index !== currentIndex && items[index]) {
-    loadArticle(index);
-  }
+  clearTimeout(carouselScrollTimeout);
+  carouselScrollTimeout = setTimeout(() => {
+    const slide = document.querySelector(".slide");
+    if (!slide) return;
+    const slideWidth = slide.offsetWidth + 10;
+    const index = Math.round(document.getElementById("carousel").scrollLeft / slideWidth);
+    if (index !== currentIndex && items[index]) {
+      loadArticle(index);
+    }
+  }, 50); // Kortere timeout voor snellere respons
 };
+
+// Directe klik op slides (optioneel, voor betere UX)
+document.getElementById("carousel").addEventListener("click", (e) => {
+  const slide = e.target.closest(".slide");
+  if (slide) {
+    const index = parseInt(slide.dataset.index);
+    if (!isNaN(index) && index !== currentIndex && items[index]) {
+      // Scroll naar de geselecteerde slide
+      slide.scrollIntoView({ behavior: 'smooth', inline: 'center' });
+      // Laad het artikel
+      loadArticle(index);
+    }
+  }
+});
 
 /* ========= INIT ========= */
 

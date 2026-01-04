@@ -45,16 +45,18 @@
 let items = [];
 let currentIndex = 0;
 
-/* ========= Vertaal / Gemini helpers ========= */
+/* ========= BATCH VERTALING (DeepSeek) ========= */
 
-async function translateSentence(sentence, targetLang = "nl") {
+async function translateSentencesBatch(sentences, targetLang = "pt-BR") {
   try {
-    const resp = await fetch(`/api/translate?sentence=${encodeURIComponent(sentence)}&target=${targetLang}`);
+    const resp = await fetch(
+      `/api/translate?sentences=${encodeURIComponent(JSON.stringify(sentences))}&target=${targetLang}`
+    );
     const data = await resp.json();
-    return data.translation || null;
+    return data.translations || [];
   } catch (e) {
-    console.error("Vertaalfout:", e);
-    return null;
+    console.error("Batch vertaalfout:", e);
+    return [];
   }
 }
 
@@ -65,22 +67,24 @@ function splitIntoSentences(text) {
     .filter(s => s.trim().length > 0);
 }
 
-async function translateArticleContent(html, targetLang = "nl") {
+async function translateArticleContent(html, targetLang = "pt-BR") {
   const temp = document.createElement("div");
   temp.innerHTML = html;
   const text = temp.innerText;
 
   const sentences = splitIntoSentences(text);
+
+  // 1 batch request
+  const translations = await translateSentencesBatch(sentences, targetLang);
+
   let output = "";
 
-  for (const s of sentences) {
-    const translated = await translateSentence(s, targetLang);
-
+  sentences.forEach((s, i) => {
     output += `<p class="translation-original">${s}</p>`;
-    if (translated) {
-      output += `<p class="translation-line">${translated}</p>`;
+    if (translations[i]) {
+      output += `<p class="translation-line">${translations[i]}</p>`;
     }
-  }
+  });
 
   return output;
 }

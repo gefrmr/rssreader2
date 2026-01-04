@@ -6,39 +6,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `
-Vertaal deze zin naar ${target}.
-Geef ALLEEN de vertaling terug, zonder uitleg.
-
-Zin:
-${sentence}
-                  `
-                }
-              ]
-            }
-          ]
-        })
-      }
-    );
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [
+          {
+            role: "system",
+            content: `Vertaal de volgende zin naar ${target}. Geef ALLEEN de vertaling terug, zonder uitleg.`
+          },
+          {
+            role: "user",
+            content: sentence
+          }
+        ]
+      })
+    });
 
     const data = await response.json();
 
-    console.log("Gemini response:", JSON.stringify(data, null, 2));
+    console.log("DeepSeek response:", JSON.stringify(data, null, 2));
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = data?.choices?.[0]?.message?.content || "";
 
     res.status(200).json({ translation: text.trim() });
 

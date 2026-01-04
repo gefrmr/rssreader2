@@ -49,6 +49,7 @@
     display: none;
     gap: 12px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
   }
 
   .audio-btn {
@@ -90,6 +91,19 @@
     <label for="toggleTranslate">Vertaling inschakelen</label>
   </div>
 
+  <!-- NAVIGATION BUTTONS -->
+  <div id="audioNav" class="audio-controls">
+    <button class="audio-btn" onclick="prevLine()">⏮️</button>
+    <button class="audio-btn" onclick="nextLine()">⏭️</button>
+  </div>
+
+  <!-- SPEED SLIDER -->
+  <div id="speedControl" style="display:none; margin-bottom:12px;">
+    <label for="speedSlider" style="font-size:13px; color:#444;">Spreeksnelheid</label>
+    <input type="range" id="speedSlider" min="0.8" max="1.0" step="0.01" value="1.0" style="width:100%;">
+  </div>
+
+  <!-- AUDIO BUTTONS -->
   <div id="audioControls" class="audio-controls">
     <button class="audio-btn" onclick="speakTranslation()">▶️ Afspelen</button>
     <button class="audio-btn pause" onclick="pauseSpeaking()">⏸️ Pauze</button>
@@ -115,6 +129,11 @@ let isPaused = false;
 let currentUtterance = null;
 let currentLineIndex = 0;
 let lines = [];
+let speechRate = 1.0;
+
+document.getElementById("speedSlider").addEventListener("input", (e) => {
+  speechRate = parseFloat(e.target.value);
+});
 
 function getBrazilianVoice() {
   const voices = speechSynthesis.getVoices();
@@ -169,7 +188,7 @@ function speakTranslation() {
 
     currentUtterance = new SpeechSynthesisUtterance(lines[currentLineIndex]);
     currentUtterance.voice = voice;
-    currentUtterance.rate = 1.0;
+    currentUtterance.rate = speechRate;
     currentUtterance.pitch = 1.0;
 
     currentUtterance.onend = () => {
@@ -216,12 +235,26 @@ function playSingleLine(i) {
   const text = el.innerText.trim();
   const u = new SpeechSynthesisUtterance(text);
   u.voice = voice;
-  u.rate = 1.0;
+  u.rate = speechRate;
   u.pitch = 1.0;
 
   u.onend = () => el.classList.remove("active-line");
 
   speechSynthesis.speak(u);
+}
+
+function prevLine() {
+  if (!lines.length) return;
+  stopSpeaking();
+  currentLineIndex = Math.max(0, currentLineIndex - 1);
+  playSingleLine(currentLineIndex);
+}
+
+function nextLine() {
+  if (!lines.length) return;
+  stopSpeaking();
+  currentLineIndex = Math.min(lines.length - 1, currentLineIndex + 1);
+  playSingleLine(currentLineIndex);
 }
 
 /* ========= BATCH VERTALING ========= */
@@ -372,6 +405,8 @@ async function loadArticle(index) {
     const translateOn = document.getElementById("toggleTranslate").checked;
 
     document.getElementById("audioControls").style.display =
+    document.getElementById("audioNav").style.display =
+    document.getElementById("speedControl").style.display =
       translateOn ? "flex" : "none";
 
     if (translateOn) {

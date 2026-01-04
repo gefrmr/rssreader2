@@ -30,15 +30,36 @@
              line-height: 1.25; font-size: 15px; opacity: 0; animation: fadeIn 0.4s forwards; }
   .article h2 { font-size: 18px; margin-top: 0; line-height: 1.2; }
 
-  .translation-original { margin-bottom: 2px; }
-  .translation-line { 
-    color: #003399; 
-    margin: 0 0 8px 10px; 
-    font-style: italic;
-    cursor: pointer;
+  .translation-group {
+    margin-bottom: 12px;
+    border-left: 2px solid #e0e0e0;
+    padding-left: 8px;
   }
 
-  .active-line {
+  .translation-original {
+    display: block;
+    margin-bottom: 2px;
+    line-height: 1.4;
+  }
+
+  .translation-line {
+    display: block;
+    color: #003399;
+    font-style: italic;
+    margin-left: 10px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+
+  .translation-line:hover {
+    background-color: #f0f0f0;
+  }
+
+  .translation-line.active-line {
+    background-color: #e3f2fd;
     text-decoration: underline;
     text-decoration-thickness: 2px;
   }
@@ -49,6 +70,7 @@
     display: none;
     gap: 12px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
   }
 
   .audio-btn {
@@ -90,6 +112,19 @@
     <label for="toggleTranslate">Vertaling inschakelen</label>
   </div>
 
+  <!-- NAVIGATION BUTTONS -->
+  <div id="audioNav" class="audio-controls">
+    <button class="audio-btn" onclick="prevLine()">⏮️</button>
+    <button class="audio-btn" onclick="nextLine()">⏭️</button>
+  </div>
+
+  <!-- SPEED SLIDER -->
+  <div id="speedControl" style="display:none; margin-bottom:12px;">
+    <label for="speedSlider" style="font-size:13px; color:#444;">Spreeksnelheid</label>
+    <input type="range" id="speedSlider" min="0.8" max="1.0" step="0.01" value="1.0" style="width:100%;">
+  </div>
+
+  <!-- AUDIO BUTTONS -->
   <div id="audioControls" class="audio-controls">
     <button class="audio-btn" onclick="speakTranslation()">▶️ Afspelen</button>
     <button class="audio-btn pause" onclick="pauseSpeaking()">⏸️ Pauze</button>
@@ -115,6 +150,11 @@ let isPaused = false;
 let currentUtterance = null;
 let currentLineIndex = 0;
 let lines = [];
+let speechRate = 1.0;
+
+document.getElementById("speedSlider").addEventListener("input", (e) => {
+  speechRate = parseFloat(e.target.value);
+});
 
 function getBrazilianVoice() {
   const voices = speechSynthesis.getVoices();
@@ -169,7 +209,7 @@ function speakTranslation() {
 
     currentUtterance = new SpeechSynthesisUtterance(lines[currentLineIndex]);
     currentUtterance.voice = voice;
-    currentUtterance.rate = 1.0;
+    currentUtterance.rate = speechRate;
     currentUtterance.pitch = 1.0;
 
     currentUtterance.onend = () => {
@@ -216,12 +256,26 @@ function playSingleLine(i) {
   const text = el.innerText.trim();
   const u = new SpeechSynthesisUtterance(text);
   u.voice = voice;
-  u.rate = 1.0;
+  u.rate = speechRate;
   u.pitch = 1.0;
 
   u.onend = () => el.classList.remove("active-line");
 
   speechSynthesis.speak(u);
+}
+
+function prevLine() {
+  if (!lines.length) return;
+  stopSpeaking();
+  currentLineIndex = Math.max(0, currentLineIndex - 1);
+  playSingleLine(currentLineIndex);
+}
+
+function nextLine() {
+  if (!lines.length) return;
+  stopSpeaking();
+  currentLineIndex = Math.min(lines.length - 1, currentLineIndex + 1);
+  playSingleLine(currentLineIndex);
 }
 
 /* ========= BATCH VERTALING ========= */
@@ -240,40 +294,89 @@ async function translateSentencesBatch(sentences, targetLang = "pt-BR") {
 function splitIntoSentences(text) {
   return text
     .replace(/\s+/g, " ")
-    .split(/(?<=[.!?])\s+/)
+    .trim()
+    .split(/(?<![A-Z][a-z]\.)(?<![A-Z][a-z][a-z]\.)(?<![Mm]r\.)(?<![Mm]rs\.)(?<![Dd]r\.)(?<![Pp]rof\.)(?<![Ss]r\.)(?<![Jj]r\.)(?<![Vv]s\.)(?<![Ee]tc\.)(?<![Ee]g\.)(?<![Ii]e\.)(?<=[.!?])\s+/)
     .filter(s => s.trim().length > 0);
 }
 
 async function translateArticleContent(html, targetLang = "pt-BR") {
   const temp = document.createElement("div");
   temp.innerHTML = html;
-  const text = temp.innerText;
-
-  const sentences = splitIntoSentences(text);
-  if (sentences.length === 0) return html;
-
+  
+  // Extraheer tekst maar behoud structuur
+  const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode);
+  }
+  
+  let allSentences = [];
+  const nodeToSentencesMap = new Map();
+  
+  // Verzamel zinnen per tekstnode
+  textNodes.forEach(node => {
+    if (node.textContent.trim()) {
+      const sentences = splitIntoSentences(node.textContent);
+      if (sentences.length > 0) {
+        nodeToSentencesMap.set(node, sentences);
+        allSentences = allSentences.concat(sentences);
+      }
+    }
+  });
+  
+  if (allSentences.length === 0) return html;
+  
+  // Vertaal in batches
   const chunkSize = 20;
   const chunks = [];
-  for (let i = 0; i < sentences.length; i += chunkSize) {
-    chunks.push(sentences.slice(i, i + chunkSize));
+  for (let i = 0; i < allSentences.length; i += chunkSize) {
+    chunks.push(allSentences.slice(i, i + chunkSize));
   }
-
+  
   const results = await Promise.all(
     chunks.map(chunk => translateSentencesBatch(chunk, targetLang))
   );
-
+  
   const translations = results.flat();
-
-  let output = "";
-  sentences.forEach((s, i) => {
-    output += `
-      <p class="translation-original">${s}</p>
-      <p class="translation-line" data-index="${i}" onclick="playSingleLine(${i})">
-        ${translations[i] || ""}
-      </p>`;
+  
+  // Vervang elke tekstnode met gestructureerde uitvoer
+  let translationIndex = 0;
+  textNodes.forEach(node => {
+    const sentences = nodeToSentencesMap.get(node);
+    if (sentences && sentences.length > 0) {
+      const parent = node.parentNode;
+      const fragment = document.createDocumentFragment();
+      
+      sentences.forEach((sentence, i) => {
+        // Maak een container groep voor elke zin
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "translation-group";
+        
+        // Originele zin
+        const originalSpan = document.createElement("span");
+        originalSpan.className = "translation-original";
+        originalSpan.textContent = sentence;
+        
+        // Vertaling
+        const translationSpan = document.createElement("span");
+        translationSpan.className = "translation-line";
+        translationSpan.dataset.index = translationIndex;
+        translationSpan.textContent = translations[translationIndex] || "";
+        translationSpan.onclick = () => playSingleLine(translationIndex);
+        
+        groupDiv.appendChild(originalSpan);
+        groupDiv.appendChild(document.createElement("br"));
+        groupDiv.appendChild(translationSpan);
+        
+        fragment.appendChild(groupDiv);
+        translationIndex++;
+      });
+      
+      parent.replaceChild(fragment, node);
+    }
   });
-
-  return output;
+  
+  return temp.innerHTML;
 }
 
 /* ========= CLOUD SYNC + RSS ========= */
@@ -372,6 +475,8 @@ async function loadArticle(index) {
     const translateOn = document.getElementById("toggleTranslate").checked;
 
     document.getElementById("audioControls").style.display =
+    document.getElementById("audioNav").style.display =
+    document.getElementById("speedControl").style.display =
       translateOn ? "flex" : "none";
 
     if (translateOn) {

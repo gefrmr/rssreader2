@@ -48,86 +48,61 @@ let currentIndex = 0;
 /* ========= BATCH VERTALING (DeepSeek) ========= */
 
 async function translateSentencesBatch(sentences, targetLang = "pt-BR") {
-  console.log("[translateSentencesBatch] start", { sentences, targetLang });
-
   try {
     const url = `/api/translate?sentences=${JSON.stringify(sentences)}&target=${targetLang}`;
-    console.log("[translateSentencesBatch] fetch", url);
-
-    // timeout safeguard
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 15000); // 15s timeout
-
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-
+    const resp = await fetch(url);
     const data = await resp.json();
-    console.log("[translateSentencesBatch] response", data);
 
-    if (!resp.ok) {
-      console.error("[translateSentencesBatch] HTTP not ok", resp.status);
+    if (!resp.ok || !Array.isArray(data.translations)) {
+      console.warn("Batch vertaling mislukt:", data);
       return [];
     }
 
-    return Array.isArray(data.translations) ? data.translations : [];
+    return data.translations;
   } catch (e) {
-    console.error("[translateSentencesBatch] error", e);
+    console.error("Batch vertaalfout:", e);
     return [];
   }
 }
 
 function splitIntoSentences(text) {
-  // eenvoudige versie, minder kans op regex-issues
   return text
     .replace(/\s+/g, " ")
-    .split(/([.!?])+ /)
-    .reduce((acc, cur, idx, arr) => {
-      if (idx % 2 === 0) {
-        const sentence = (cur + (arr[idx + 1] || "")).trim();
-        if (sentence.length > 0) acc.push(sentence);
-      }
-      return acc;
-    }, []);
+    .split(/(?<=[.!?])\s+/)
+    .filter(s => s.trim().length > 0);
 }
 
 async function translateArticleContent(html, targetLang = "pt-BR") {
-  console.log("[translateArticleContent] start");
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+  const text = temp.innerText;
 
-  try {
-    const temp = document.createElement("div");
-    temp.innerHTML = html;
-    const text = temp.innerText || temp.textContent || "";
+  const sentences = splitIntoSentences(text);
+  if (sentences.length === 0) return html;
 
-    console.log("[translateArticleContent] extracted text length", text.length);
-
-    const sentences = splitIntoSentences(text);
-    console.log("[translateArticleContent] sentences", sentences.length, sentences);
-
-    if (sentences.length === 0) {
-      console.warn("[translateArticleContent] geen zinnen, return originele html");
-      return html;
-    }
-
-    const translations = await translateSentencesBatch(sentences, targetLang);
-    console.log("[translateArticleContent] translations ontvangen", translations.length);
-
-    let output = "";
-
-    sentences.forEach((s, i) => {
-      output += `<p class="translation-original">${s}</p>`;
-      if (translations[i]) {
-        output += `<p class="translation-line">${translations[i]}</p>`;
-      }
-    });
-
-    return output;
-  } catch (e) {
-    console.error("[translateArticleContent] error", e);
-    // bij fout: toon originele html zodat UI niet blijft hangen
-    return html;
+  // --- CHUNKING ---
+  const chunkSize = 20;
+  const chunks = [];
+  for (let i = 0; i < sentences.length; i += chunkSize) {
+    chunks.push(sentences.slice(i, i + chunkSize));
   }
+
+  // --- PARALLEL BATCHING ---
+  const results = await Promise.all(
+    chunks.map(chunk => translateSentencesBatch(chunk, targetLang))
+  );
+
+  const translations = results.flat();
+
+  let output = "";
+  sentences.forEach((s, i) => {
+    output += `<p class="translation-original">${s}</p>`;
+    if (translations[i]) {
+      output += `<p class="translation-line">${translations[i]}</p>`;
+    }
+  });
+
+  return output;
 }
 
 /* ========= Cloud sync en RSS ========= */
@@ -142,7 +117,7 @@ async function fetchCloudData(url) {
       .map(row => row.replace(/^"|"$/g, "").trim())
       .filter(row => row.length > 0);
   } catch (e) {
-    console.error("[fetchCloudData] error", e);
+    console.error("Cloud sync fout:", e);
     return null;
   }
 }
@@ -203,7 +178,7 @@ async function loadFeed(url) {
       .join("");
     loadArticle(0);
   } catch (e) {
-    console.error("[loadFeed] error", e);
+    console.error("RSS fout:", e);
     carousel.innerHTML = "Fout bij laden.";
   }
 }
@@ -219,12 +194,9 @@ async function loadArticle(index) {
   container.innerHTML = "Laden...";
   currentIndex = index;
 
-  console.log("[loadArticle] start index", index);
-
   try {
     const link = items[index]?.link;
     if (!link) {
-      console.error("[loadArticle] geen link voor index", index);
       container.innerHTML = "Geen artikel.";
       return;
     }
@@ -236,13 +208,8 @@ async function loadArticle(index) {
     let html = data.content;
     const title = data.title || "";
 
-    console.log("[loadArticle] article content length", html?.length || 0);
-
     if (document.getElementById("toggleTranslate").checked) {
-      console.log("[loadArticle] vertaling ingeschakeld");
       html = await translateArticleContent(html, "pt-BR");
-    } else {
-      console.log("[loadArticle] vertaling UIT");
     }
 
     container.innerHTML = `
@@ -254,7 +221,7 @@ async function loadArticle(index) {
       container.style.opacity = 1;
     });
   } catch (e) {
-    console.error("[loadArticle] error", e);
+    console.error("Artikel fout:", e);
     container.innerHTML = "Fout.";
   }
 }
@@ -273,7 +240,6 @@ document.getElementById("carousel").onscroll = () => {
 };
 
 async function init() {
-  console.log("[init] start");
   await startSync();
   loadSavedFeeds();
 }

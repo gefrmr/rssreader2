@@ -18,7 +18,7 @@
   .article { background: white; padding: 20px; margin-top: 12px; border-radius: 12px; line-height: 1.25; font-size: 15px; opacity: 0; animation: fadeIn 0.4s forwards; }
   .article h2 { font-size: 18px; margin-top: 0; line-height: 1.2; }
   .translation-original { margin-bottom: 2px; }
-  .translation-line { color: #555; margin: 0 0 8px 10px; font-style: italic; }
+  .translation-line { color: #003399; /* donkerblauw */ margin: 0 0 8px 10px; font-style: italic;}
   .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   @keyframes fadeIn { to { opacity: 1; } }
 </style>
@@ -32,7 +32,7 @@
   </div>
 
   <div class="toggle-row">
-    <input type="checkbox" id="toggleTranslate">
+    <input type="checkbox" id="toggleTranslate" checked>
     <label for="toggleTranslate">Vertaling inschakelen</label>
   </div>
 

@@ -49,9 +49,8 @@ let currentIndex = 0;
 
 async function translateSentencesBatch(sentences, targetLang = "pt-BR") {
   try {
-    const resp = await fetch(
-      `/api/translate?sentences=${encodeURIComponent(JSON.stringify(sentences))}&target=${targetLang}`
-    );
+    const url = `/api/translate?sentences=${JSON.stringify(sentences)}&target=${targetLang}`;
+    const resp = await fetch(url);
     const data = await resp.json();
     return data.translations || [];
   } catch (e) {
@@ -74,7 +73,8 @@ async function translateArticleContent(html, targetLang = "pt-BR") {
 
   const sentences = splitIntoSentences(text);
 
-  // 1 batch request
+  if (sentences.length === 0) return html;
+
   const translations = await translateSentencesBatch(sentences, targetLang);
 
   let output = "";

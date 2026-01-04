@@ -52,6 +52,7 @@ async function translateSentencesBatch(sentences, targetLang = "pt-BR") {
     const url = `/api/translate?sentences=${JSON.stringify(sentences)}&target=${targetLang}`;
     const resp = await fetch(url);
     const data = await resp.json();
+    console.log("DeepSeek batch response:", data); // ← voeg deze toe
     return data.translations || [];
   } catch (e) {
     console.error("Batch vertaalfout:", e);

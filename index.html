@@ -31,13 +31,32 @@
   .article h2 { font-size: 18px; margin-top: 0; line-height: 1.2; }
 
   .translation-original { margin-bottom: 2px; }
-  .translation-line { color: #003399; margin: 0 0 8px 10px; font-style: italic; }
+  .translation-line { 
+    color: #003399; 
+    margin: 0 0 8px 10px; 
+    font-style: italic;
+    position: relative;
+    padding-left: 24px;
+  }
+
+  .translation-line .play-icon {
+    position: absolute;
+    left: 0;
+    top: 0;
+    cursor: pointer;
+    font-size: 16px;
+    user-select: none;
+  }
+
+  .active-line {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
 
   .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 
-  /* AUDIO BUTTONS */
   .audio-controls {
-    display: none; /* wordt zichtbaar wanneer vertaling aan staat */
+    display: none;
     gap: 12px;
     margin-bottom: 12px;
   }
@@ -54,8 +73,14 @@
     text-align: center;
   }
 
-  .audio-btn.stop {
-    background: #cc0000;
+  .audio-btn.stop { background: #cc0000; }
+  .audio-btn.pause { background: #ffaa00; }
+
+  #progressBar {
+    font-size: 13px;
+    color: #444;
+    margin-bottom: 8px;
+    display: none;
   }
 
   @keyframes fadeIn { to { opacity: 1; } }
@@ -75,11 +100,13 @@
     <label for="toggleTranslate">Vertaling inschakelen</label>
   </div>
 
-  <!-- AUDIO CONTROLS -->
   <div id="audioControls" class="audio-controls">
     <button class="audio-btn" onclick="speakTranslation()">▶️ Afspelen</button>
+    <button class="audio-btn pause" onclick="pauseSpeaking()">⏸️ Pauze</button>
     <button class="audio-btn stop" onclick="stopSpeaking()">⏹️ Stop</button>
   </div>
+
+  <div id="progressBar"></div>
 
   <select id="feedSelect" onchange="loadSelectedFeed()"></select>
   <div id="carousel" class="carousel"></div>
@@ -91,10 +118,13 @@
 let items = [];
 let currentIndex = 0;
 
-/* ========= AUDIO (PT-BR STEM) ========= */
+/* ========= AUDIO ENGINE ========= */
 
 let isSpeaking = false;
+let isPaused = false;
 let currentUtterance = null;
+let currentLineIndex = 0;
+let lines = [];
 
 function getBrazilianVoice() {
   const voices = speechSynthesis.getVoices();
@@ -105,39 +135,102 @@ function getBrazilianVoice() {
   );
 }
 
+function updateProgress() {
+  const bar = document.getElementById("progressBar");
+  if (!isSpeaking) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "block";
+  bar.innerText = `Zin ${currentLineIndex + 1} van ${lines.length}`;
+}
+
+function highlightActiveLine() {
+  document.querySelectorAll(".translation-line").forEach(el => {
+    el.classList.remove("active-line");
+  });
+  const active = document.querySelector(`.translation-line[data-index="${currentLineIndex}"]`);
+  if (active) active.classList.add("active-line");
+}
+
 function speakTranslation() {
   if (isSpeaking) return;
 
   const article = document.getElementById("article");
-  const lines = [...article.querySelectorAll(".translation-line")].map(el => el.innerText);
+  lines = [...article.querySelectorAll(".translation-line")].map(el => el.innerText);
 
   if (lines.length === 0) return;
 
   const voice = getBrazilianVoice();
   isSpeaking = true;
+  isPaused = false;
+  currentLineIndex = 0;
 
-  function speakNext(i) {
-    if (!isSpeaking || i >= lines.length) {
+  function speakNext() {
+    if (!isSpeaking || currentLineIndex >= lines.length) {
       isSpeaking = false;
+      updateProgress();
+      highlightActiveLine(); // reset
       return;
     }
 
-    currentUtterance = new SpeechSynthesisUtterance(lines[i]);
+    highlightActiveLine();
+    updateProgress();
+
+    currentUtterance = new SpeechSynthesisUtterance(lines[currentLineIndex]);
     currentUtterance.voice = voice;
     currentUtterance.rate = 1.0;
     currentUtterance.pitch = 1.0;
 
-    currentUtterance.onend = () => speakNext(i + 1);
+    currentUtterance.onend = () => {
+      if (!isPaused) {
+        currentLineIndex++;
+        speakNext();
+      }
+    };
 
     speechSynthesis.speak(currentUtterance);
   }
 
-  speakNext(0);
+  speakNext();
+}
+
+function pauseSpeaking() {
+  if (!isSpeaking) return;
+  if (!isPaused) {
+    speechSynthesis.pause();
+    isPaused = true;
+  } else {
+    speechSynthesis.resume();
+    isPaused = false;
+  }
 }
 
 function stopSpeaking() {
   isSpeaking = false;
+  isPaused = false;
   speechSynthesis.cancel();
+  updateProgress();
+  document.querySelectorAll(".translation-line").forEach(el => el.classList.remove("active-line"));
+}
+
+function playSingleLine(i) {
+  stopSpeaking();
+  const voice = getBrazilianVoice();
+  const el = document.querySelector(`.translation-line[data-index="${i}"]`);
+  if (!el) return;
+
+  el.classList.add("active-line");
+
+  const text = el.innerText.replace("🔊", "").trim();
+  const u = new SpeechSynthesisUtterance(text);
+  u.voice = voice;
+  u.rate = 1.0;
+  u.pitch = 1.0;
+
+  u.onend = () => el.classList.remove("active-line");
+
+  speechSynthesis.speak(u);
 }
 
 /* ========= BATCH VERTALING ========= */
@@ -182,10 +275,12 @@ async function translateArticleContent(html, targetLang = "pt-BR") {
 
   let output = "";
   sentences.forEach((s, i) => {
-    output += `<p class="translation-original">${s}</p>`;
-    if (translations[i]) {
-      output += `<p class="translation-line">${translations[i]}</p>`;
-    }
+    output += `
+      <p class="translation-original">${s}</p>
+      <p class="translation-line" data-index="${i}">
+        <span class="play-icon" onclick="playSingleLine(${i})">🔊</span>
+        ${translations[i] || ""}
+      </p>`;
   });
 
   return output;
@@ -266,7 +361,7 @@ function loadSelectedFeed() {
 }
 
 async function loadArticle(index) {
-  stopSpeaking(); // audio stoppen bij swipe
+  stopSpeaking();
 
   const container = document.getElementById("article");
   container.style.opacity = 0;
@@ -322,6 +417,11 @@ document.getElementById("carousel").onscroll = () => {
 async function init() {
   await startSync();
   loadSavedFeeds();
+
+  // Zorg dat stemmen geladen zijn (voor sommige browsers)
+  if (typeof speechSynthesis !== "undefined") {
+    speechSynthesis.onvoiceschanged = () => {};
+  }
 }
 init();
 

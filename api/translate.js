@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  const { sentence, target = "nl" } = req.query;
+  const { sentence, target = "pt-BR" } = req.query;
 
   if (!sentence) {
     return res.status(400).json({ error: "Sentence ontbreekt" });
@@ -15,7 +15,17 @@ export default async function handler(req, res) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Vertaal naar ${target}. Geef alleen de vertaling terug:\n\n"${sentence}"` }]
+            parts: [{
+              text: `
+Vertaal de volgende zin naar ${target}.
+- Geef ALTIJD een vertaling terug.
+- Als de zin al in ${target} is, herschrijf hem dan natuurlijker in ${target}.
+- Geen uitleg, geen extra tekst, alleen de vertaalde zin.
+
+Zin:
+"${sentence}"
+              `
+            }]
           }]
         })
       }
